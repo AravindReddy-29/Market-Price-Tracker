@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Market Prices - Crop Market Tracker</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+.fade-in {
+    animation: fadeIn 0.6s ease-in-out;
+}
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.card-hover:hover {
+    transform: translateY(-4px);
+    transition: 0.3s ease;
+    box-shadow: 0 12px 25px rgba(0,0,0,0.12);
+}
+
+.btn-animate {
+    transition: all 0.3s ease;
+}
+.btn-animate:hover {
+    transform: translateY(-2px);
+}
+</style>
+</head>
+
+<body class="min-h-screen bg-gradient-to-br from-green-100 via-white to-green-200 fade-in">
+
+<!-- NAVBAR -->
+<nav class="bg-green-700 text-white p-4 flex justify-between items-center shadow">
+    <h1 class="text-xl font-bold">🌾 Crop Market Tracker</h1>
+    <div class="flex items-center gap-6">
+        <a href="dashboard.html" class="hover:text-gray-200">Dashboard</a>
+        <a href="index.html" class="hover:text-gray-200">Home</a>
+        <button onclick="logout()" class="bg-white text-green-700 px-4 py-1 rounded btn-animate">
+            Logout
+        </button>
+    </div>
+</nav>
+
+<div class="max-w-6xl mx-auto p-10">
+
+    <!-- Page Title -->
+    <div class="mb-8">
+        <h2 class="text-3xl font-bold text-green-800">
+            Market Price Analysis
+        </h2>
+        <p class="text-gray-700">
+            Analyze crop price trends and receive smart selling recommendations.
+        </p>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow mb-8 flex flex-wrap gap-4 card-hover">
+        <select id="commoditySelect" class="border p-3 rounded">
+            <option value="Rice">Rice</option>
+            <option value="Wheat">Wheat</option>
+        </select>
+
+        <select id="marketSelect" class="border p-3 rounded">
+            <option value="">All Markets</option>
+            <option value="Hyderabad">Hyderabad</option>
+            <option value="Warangal">Warangal</option>
+        </select>
+
+        <button onclick="loadData()" class="bg-green-600 text-white px-6 py-3 rounded btn-animate hover:bg-green-700">
+            Apply Filter
+        </button>
+    </div>
+
+    <!-- Market Insight Box -->
+    <div id="trendBox"
+         class="p-6 rounded-xl mb-8 text-center bg-white/80 backdrop-blur-md shadow">
+         Loading market insight...
+    </div>
+
+    <!-- Chart Section -->
+    <div class="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow mb-8 card-hover">
+        <h3 class="text-xl font-bold text-green-800 mb-4">Price Trend Chart</h3>
+        <canvas id="priceChart"></canvas>
+    </div>
+
+    <!-- Table Section -->
+    <div class="bg-white/80 backdrop-blur-md p-6 rounded-xl shadow card-hover">
+        <h3 class="text-xl font-bold text-green-800 mb-4">Market Data</h3>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left">
+                <thead class="bg-green-100">
+                    <tr>
+                        <th class="p-3">Commodity</th>
+                        <th class="p-3">Market</th>
+                        <th class="p-3">Date</th>
+                        <th class="p-3">Price (₹)</th>
+                    </tr>
+                </thead>
+                <tbody id="dataTable"></tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<script>
+let chartInstance = null;
+
+async function loadData() {
+
+    const commodity = document.getElementById("commoditySelect").value;
+    const market = document.getElementById("marketSelect").value;
+
+    let url = `/api/prices?commodity=${commodity}`;
+    if (market) url += `&market=${market}`;
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    // Populate Table
+    const table = document.getElementById("dataTable");
+    table.innerHTML = data.map(r => `
+        <tr class="border-b hover:bg-gray-50">
+            <td class="p-3">${r.commodity}</td>
+            <td class="p-3">${r.market}</td>
+            <td class="p-3">${r.arrival_date}</td>
+            <td class="p-3 font-semibold text-green-700">₹${r.modal_price}</td>
+        </tr>
+    `).join("");
+
+    // TREND + SUGGESTION LOGIC
+    const trendBox = document.getElementById("trendBox");
+
+    if (data.length >= 2) {
+
+        const latest = parseInt(data[data.length - 1].modal_price);
+        const previous = parseInt(data[data.length - 2].modal_price);
+
+        const difference = latest - previous;
+        const percentChange = ((difference / previous) * 100).toFixed(2);
+
+        if (latest > previous) {
+
+            trendBox.className =
+                "p-6 rounded-xl mb-8 text-center bg-green-100 text-green-800 shadow";
+
+            trendBox.innerHTML = `
+                <h3 class="text-xl font-bold mb-2">📈 Price Increasing</h3>
+                <p class="mb-2">Change: +${percentChange}%</p>
+                <p class="font-semibold">
+                    Recommendation: HOLD your crop. Market trend is positive.
+                </p>
+            `;
+        }
+        else if (latest < previous) {
+
+            trendBox.className =
+                "p-6 rounded-xl mb-8 text-center bg-red-100 text-red-800 shadow";
+
+            trendBox.innerHTML = `
+                <h3 class="text-xl font-bold mb-2">📉 Price Decreasing</h3>
+                <p class="mb-2">Change: ${percentChange}%</p>
+                <p class="font-semibold">
+                    Recommendation: SELL before further decline.
+                </p>
+            `;
+        }
+        else {
+
+            trendBox.className =
+                "p-6 rounded-xl mb-8 text-center bg-yellow-100 text-yellow-800 shadow";
+
+            trendBox.innerHTML = `
+                <h3 class="text-xl font-bold mb-2">⚖️ Price Stable</h3>
+                <p class="mb-2">No significant change</p>
+                <p class="font-semibold">
+                    Recommendation: Monitor market closely.
+                </p>
+            `;
+        }
+    }
+
+    // CHART
+    if (chartInstance) chartInstance.destroy();
+
+    const ctx = document.getElementById("priceChart").getContext("2d");
+
+    chartInstance = new Chart(ctx, {
+        type: "line",
+        data: {
+            labels: data.map(r => r.arrival_date),
+            datasets: [{
+                label: "Modal Price",
+                data: data.map(r => r.modal_price),
+                borderColor: "#15803d",
+                backgroundColor: "rgba(21,128,61,0.2)",
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            animation: {
+                duration: 1000
+            },
+            scales: {
+                y: {
+                    beginAtZero: false
+                }
+            }
+        }
+    });
+}
+
+function logout() {
+    window.location = "index.html";
+}
+
+loadData();
+</script>
+
+</body>
+</html>
